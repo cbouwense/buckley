@@ -1,6 +1,7 @@
 #import "Basic";
 #import "File";
 #import "File_Utilities";
+#import "Print_Vars";
 String :: #import "String";
 using String;
 
@@ -11,7 +12,6 @@ using String;
 verbose_mode := false;
 watch_mode   := false;
 template_file_path : string;
-value_file_path    : string;
 
 main :: () {
     // Process arguments
@@ -20,9 +20,6 @@ main :: () {
         for cli_args {
             if ends_with(it, ".buckley.template") {
                 template_file_path = it;
-            }
-            else if ends_with(it, ".buckley.value") {
-                value_file_path = it;
             }
             // Help text
             else if equal(it, "-h") || equal(it, "--help") {
@@ -52,6 +49,9 @@ main :: () {
         exit(1);
     }
 
+    final_output_builder : String_Builder;
+    init_string_builder(*final_output_builder);
+
     template_file_string := read_entire_file(template_file_path);
     template_file_lines  := split(template_file_string, "\n");
 
@@ -63,14 +63,71 @@ main :: () {
     // an equivalent .buckley.value file. For example, if we encounter {{head}},
     // we will look for a head.buckley.value file. We will then copy the lines over
     // in place from the value file to the output file instead of the template line.
-    for template_file_lines {
-        // This line has a template delimeter.
-        if contains(it, "{{") {
-            print("Encountered template delimeter on line %!\n", it_index + 1);
+    for line: template_file_lines {
+        line_number := it_index + 1;
+        line_has_delimiter := false;
+        delimiter_name : string;
+        
+        // Pass a rolling window of two characters over the line to see if it has {{
+        i: int = 0;
+        while i < line.count - 2 {
+            defer i += 1;
+
+            window := slice(line, i, 2);
+
+            // This line has a template delimeter.
+            if equal(window, "{{") {
+                line_has_delimiter = true;
+                print("Encountered template delimeter on line %!\n", line_number);
+
+                // Jump the window 2 characters forward so now we're looking at the actual name inside the curlies.
+                // {{head}}    {{head}}
+                // ^        ->   ^
+                // i             i
+                i += 2;
+
+                // Iterate over the name until you hit the ending curlies.
+                j := i;
+                window = slice(line, j, 2);
+                while !equal(window, "}}") {
+                    j += 1;
+                    window = slice(line, j, 2);
+                }
+
+                delimiter_name = trim(slice(line, i, j - i));
+            }
         }
-        // This line does not have a template delimiter.
-        else {
-            print("Did not encounter a template delimeter on line %. Copying...\n", it_index + 1);
+
+        if line_has_delimiter {
+            value_file_path := tprint("%.buckley.value", delimiter_name);
+
+            // First find the file that contains the value to add to the output.
+            // TODO: Preloading all of these into a table or something is probably better?
+            if !file_exists(value_file_path) {
+                if verbose_mode {
+                    print("ERROR: unable to find value file at \"%\". Are you sure the pathing is correct?", value_file_path);
+                    cwd := get_working_directory();
+                    print("Current working directory of buckley executable: %\n", cwd);
+                }
+                exit(1);
+            }
+
+            value_file_string := read_entire_file(value_file_path);
+            value_file_lines  := split(value_file_string, "\n");
+
+            // Then simply add the lines of the value file to the final output.
+            for value_line: value_file_lines {
+                append(*final_output_builder, value_line);
+                append(*final_output_builder, "\n");
+            }
+        } else {
+            print("Didn't find a delimiter on line %, so just adding this line into the output...\n", line_number);
+            append(*final_output_builder, line);
+            append(*final_output_builder, "\n");
         }
     }
+
+    // Finally, write the output builder to the output file.
+    // TODO: proper output name
+    write_succeeded := write_entire_file("output.html", *final_output_builder);
 }
