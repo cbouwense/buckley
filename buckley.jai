@@ -36,9 +36,9 @@ main :: () {
     }
 
     visitor :: (info : *File_Visit_Info, template_file_paths : *[..] string) {
-		path, basename, _ext, name_with_extension := path_decomp (info.full_name);
+		path, basename, ext := path_decomp (info.full_name);
 
-		if ends_with(name_with_extension, ".buckley.template") {
+		if equal(ext, "buckley-template") {
             array_add(template_file_paths, info.full_name);
 		}
         // TODO: probably aggregate all of the value files into a table here.
@@ -70,8 +70,8 @@ main :: () {
         // the character combo {{ then we save all of the characters until we find a
         // corresponding }}. We do this by passing a rolling window of 2 characters
         // over each line as we process. This parsed string will then be used to find
-        // an equivalent .buckley.value file. For example, if we encounter {{head}},
-        // we will look for a head.buckley.value file. We will then copy the lines over
+        // an equivalent .buckley-value file. For example, if we encounter {{head}},
+        // we will look for a head.buckley-value file. We will then copy the lines over
         // in place from the value file to the output file instead of the template line.
         for line: template_file_lines {
             line_number := it_index + 1;
@@ -109,7 +109,7 @@ main :: () {
             }
 
             if line_has_delimiter {
-                value_file_path := tprint("%.buckley.value", delimiter_name);
+                value_file_path := tprint("%.buckley-value", delimiter_name);
 
                 // First find the file that contains the value to add to the output.
                 // TODO: Preloading all of these into a table or something is probably better?
@@ -131,14 +131,16 @@ main :: () {
                     append(*final_output_builder, "\n");
                 }
             } else {
-                print("Didn't find a delimiter on line %, so just adding this line into the output...\n", line_number);
+                // print("Didn't find a delimiter on line %, so just adding this line into the output...\n", line_number);
                 append(*final_output_builder, line);
                 append(*final_output_builder, "\n");
             }
         }
 
         // Finally, write the output builder to the output file.
-        // TODO: proper output name
-        write_succeeded := write_entire_file("output.html", *final_output_builder);
+        _path, basename := path_decomp(template_file_path);
+        print_vars(basename);
+        output_path := tprint("%.html", basename);
+        write_succeeded := write_entire_file(output_path, *final_output_builder);
     }
 }
