@@ -138,9 +138,16 @@ main :: () {
         }
 
         // Finally, write the output builder to the output file.
-        _path, basename := path_decomp(template_file_path);
-        print_vars(basename);
-        output_path := tprint("%.html", basename);
+        path, basename := path_decomp(template_file_path);
+
+        output_path_builder : String_Builder;
+        init_string_builder(*output_path_builder);
+
+        append(*output_path_builder, path);
+        append(*output_path_builder, basename);
+        append(*output_path_builder, ".html");
+        output_path := builder_to_string(*output_path_builder);
+
         write_succeeded := write_entire_file(output_path, *final_output_builder);
     }
 }
