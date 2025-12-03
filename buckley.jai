@@ -35,24 +35,31 @@ main :: () {
         }
     }
 
-    visitor :: (info : *File_Visit_Info, template_file_paths : *[..] string) {
+
+
+    visitor :: (info : *File_Visit_Info, file_paths : *[..] string) {
 		path, basename, ext := path_decomp (info.full_name);
 
-		if equal(ext, "buckley-template") {
-            array_add(template_file_paths, info.full_name);
+		if equal(ext, "buckley-template") || equal(ext, "buckley-value") {
+            array_add(file_paths, info.full_name);
 		}
-        // TODO: probably aggregate all of the value files into a table here.
 	}
 
+    file_paths : [..] string;
+    visit_files(".", true, *file_paths, visitor);
+
     template_file_paths : [..] string;
-    visit_files(".", true, *template_file_paths, visitor);
-    
-    print_vars(template_file_paths);
+    value_file_paths    : [..] string;
+
+    for file_paths {
+        if ends_with(it, "buckley-template") array_add(*template_file_paths, it);
+        if ends_with(it, "buckley-value")    array_add(*value_file_paths, it);
+    }
 
     for template_file_path: template_file_paths {
         if !file_exists(template_file_path) {
+            print("ERROR: unable to find template file at \"%\". Are you sure the pathing is correct?", template_file_path);
             if verbose_mode {
-                print("ERROR: unable to find template file at \"%\". Are you sure the pathing is correct?", template_file_path);
                 cwd := get_working_directory();
                 print("Current working directory of buckley executable: %\n", cwd);
             }
@@ -88,7 +95,8 @@ main :: () {
                 // This line has a template delimeter.
                 if equal(window, "{{") {
                     line_has_delimiter = true;
-                    print("Encountered template delimeter on line %!\n", line_number);
+
+                    if verbose_mode print("Encountered template delimeter on line %!\n", line_number);
 
                     // Jump the window 2 characters forward so now we're looking at the actual name inside the curlies.
                     // {{head}}    {{head}}
@@ -109,13 +117,23 @@ main :: () {
             }
 
             if line_has_delimiter {
-                value_file_path := tprint("%.buckley-value", delimiter_name);
+                value_file_name  := tprint("%.buckley-value", delimiter_name);
+                value_file_path  : string;
+                value_file_found := false;
+
+                for value_file_paths {
+                    if ends_with(it, value_file_name) {
+                        value_file_path = it;
+                        value_file_found = true;
+                        break;
+                    }
+                }
 
                 // First find the file that contains the value to add to the output.
                 // TODO: Preloading all of these into a table or something is probably better?
-                if !file_exists(value_file_path) {
+                if !value_file_found { 
+                    print("ERROR: unable to find value file at \"%\". Are you sure the name is correct?", value_file_name);
                     if verbose_mode {
-                        print("ERROR: unable to find value file at \"%\". Are you sure the pathing is correct?", value_file_path);
                         cwd := get_working_directory();
                         print("Current working directory of buckley executable: %\n", cwd);
                     }
@@ -131,7 +149,6 @@ main :: () {
                     append(*final_output_builder, "\n");
                 }
             } else {
-                // print("Didn't find a delimiter on line %, so just adding this line into the output...\n", line_number);
                 append(*final_output_builder, line);
                 append(*final_output_builder, "\n");
             }
